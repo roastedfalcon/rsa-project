@@ -3,54 +3,69 @@
 # Description: Contains RSA functions for key generation, encryption, and decryption.
 
 
-.global cprivexp
-# Function: cprivexp
-# Purpose:  Calculates the private exponent
-# Input:    r0 - public exponent (e), r1 - phi(n)
-# Output:   r0 - private exponent
-# Errors:   returns -1 if gcd(r0,r1) != 1
-.text
+@ Function: cprivexp
+@ Author: Kendra Mosley
+@ Purpose:  Calculates the private key 'd'.
+@ Method:   Uses the Extended Euclidean Algorithm to find the modular
+@           multiplicative inverse of e (mod phi_n).
+@
+@ Args:     r0 = e (public exponent), r1 = phi_n (totient)
+@ Returns:  r0 = d (private exponent)
 cprivexp:
-     SUB sp, sp, #4          @ allocate stack space for return address
-     STR lr, [sp]            @ save return address
-     SUB sp, sp, #4          @ allocate stack space for r4
-     STR r4, [sp]
-     SUB sp, sp, #4
-     STR r4, [sp]            @ save r4
-     SUB sp, sp, #4          @ allocate stack space for r5
-     STR r5, [sp]            @ save r5
-     MOV r4, r0              @ store public exponent in r4
-     MOV r5, r1              @ store phi(n) in r5
-     BL gcd                  @ call gcd function
-     CMP r0, #1              @ check if gcd is 1
-     MOVNE r0, #-1           @ if not, return -1 (error)
-     BNE PrivExpEnd          @ jump to end if error
-     MOV r6, #1              @ initialize x to 1
-     PrivExpLoop:
-         MUL r0, r5, r6      @ calculate x * phi(n)
-         ADD r0, r0, #1      @ add 1 to get (1 + x * phi(n))
-         MOV r1, r4          @ move public exponent to r1 for mod
-         BL mod              @ call mod function
-         CMP r0, #0          @ check if result is 0
-         BEQ PrivExpEndLoop  @ if yes, exit loop
-         ADD r6, r6, #1      @ increment x
-         B PrivExpLoop       @ repeat loop
-     PrivExpEndLoop:
-         MUL r0, r5, r6      @ calculate x * phi(n)
-         ADD r0, r0, #1      @ add 1 to get (1 + x * phi(n))
-         MOV r1, r4          @ move public exponent to r1 for division
-         BL __aeabi_idiv     @ divide to get private exponent
-         B PrivExpEnd        @ jump to end
-     PrivExpEnd:
-     LDR r6, [sp]            @ restore r6
-     ADD sp, sp, #4          @ free stack space
-     LDR r5, [sp]            @ restore r5
-     ADD sp, sp, #4          @ free stack space
-     LDR r4, [sp]            @ restore r4
-     ADD sp, sp, #4          @ free stack space
-     LDR lr, [sp]            @ restore return address
-     ADD sp, sp, #4          @ free stack space
-     MOV pc, lr              @ return to caller
+    @ Save all the registers we're about to use, plus the return address.
+    PUSH    {r4-r9, lr}
+
+    @ Setup 
+    @ This algorithm finds 's' in the equation: s*e + t*phi_n = gcd(e, phi_n).
+    @ That 's' value is our private key 'd'. We don't need 't'.
+    MOV     R4, R0          @ r4 is old_r, starts as e
+    MOV     R5, R1          @ r5 is r, starts as phi_n
+    MOV     R6, #1          @ r6 is old_s, starts at 1
+    MOV     R7, #0          @ r7 is s, starts at 0
+    MOV     R8, R1          @ r8 holds the original phi_n for the final check
+
+cprivexp_loop:
+    @ Keep looping as long as r (r5) is not zero.
+    CMP     R5, #0
+    BEQ     cprivexp_done
+
+    @ Main Algorithm
+    @ 1. Get the quotient: q = old_r / r
+    MOV     R0, R4          @ Set args for the C division function
+    MOV     R1, R5
+    BL      __aeabi_idiv    @ C helper returns quotient in R0
+    MOV     R9, R0          @ Store quotient in r9
+
+    @ 2. Update r: new_r = old_r - q * r
+    MUL     R0, R9, R5      @ r0 = q * r
+    SUB     R0, R4, R0      @ r0 = old_r - (q * r)
+
+    @ "Slide" the r values down for the next loop
+    MOV     R4, R5          @ old_r becomes the old r
+    MOV     R5, R0          @ r becomes the new_r we just calculated
+
+    @ 3. Update s: new_s = old_s - q * s
+    MUL     R0, R9, R7      @ r0 = q * s
+    SUB     R0, R6, R0      @ r0 = old_s - (q * s)
+
+    @ "Slide" the s values down for the next loop
+    MOV     R6, R7          @ old_s becomes the old s
+    MOV     R7, R0          @ s becomes the new_s we just calculated
+
+    B       cprivexp_loop   @ And again...
+cprivexp_done:
+    @ The result 'd' is whatever is left in old_s (r6).
+
+    @ The raw result from the algorithm can be negative. If so,
+    @ add phi_n to it to get the correct positive modular inverse.
+    CMP     R6, #0          @ Is d negative?
+    ADDLT   R6, R6, R8      @ If so, d = d + phi_n
+
+    @ Put the final result in the return register.
+    MOV     R0, R6
+
+    @ Restore the registers and get out of here.
+    POP     {r4-r9, pc}
 .data
 # END cprivexp
 
@@ -90,6 +105,7 @@ cpubexp_done:
 
 .global process
 # Function: process
+# Author: Kassem Arif
 # Purpose:  Computes a^b mod n
 # Input:    r0 = base (a), r1 = exponent (b), r2 = modulus (n)
 # Output:   r0 = a^b mod n
@@ -128,6 +144,7 @@ process:
 
 .global processArray
 # Function: processArray
+# Author: Kassem Arif
 # Purpose:  Processes an array for RSA encryption/decryption
 # Input:    r0 = array pointer, r1 = array size, r2 = exponent, r3 = modulus
 # Output:   r0 = processed array pointer, r1 = array size
@@ -296,6 +313,7 @@ d_val:            .word   0
 
 .global encrypt
 # Function: encrypt
+# Author: Joyonna Gamble-George
 # Purpose:  Encrypts a message using public key and modulus
 .text
 encrypt:
@@ -362,6 +380,7 @@ Encrypted message saved in 'encrypted.txt'.\n"
 
 .global decrypt
 # Function: decrypt
+# Author: Joyonna Gamble-George
 # Purpose:  Decrypts a message using private key and modulus
 .text
 decrypt:

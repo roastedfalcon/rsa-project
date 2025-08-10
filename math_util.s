@@ -4,35 +4,43 @@
 #              Contains functions: gcd, mod, isPrime, totient.
 
 .text
-
-.global gcd
-# Function: gcd
-# Description: Computes the greatest common divisor of two integers using the Euclidean algorithm
-# Input: r0 = first integer, r1 = second integer
-# Output: r0 = greatest common divisor
+@ Function: gcd
+@ Author: Kendra Mosley
+@ Purpose:  Computes the greatest common divisor of two integers.
+@ Method:   Uses the Euclidean algorithm.
+@
+@ Args:     r0 = a (first integer), r1 = b (second integer)
+@ Returns:  r0 = gcd(a, b)
 gcd:
-    SUB sp, sp, #4         @ save link register
-    STR lr, [sp]
+    @ Save registers we need to preserve.
+    PUSH    {r4, lr}
 
-gcd_loop:
-    CMP r0, r1             @ compare numbers in r0 and r1
-    BEQ gcd_done           @ if equal, we're done
-    BLT gcd_subtract_r0    @ if r0 < r1, subtract r0 from r1
-    SUB r0, r0, r1         @ subtract r1 from r0
-    B gcd_continue
+mod_loop:
+    @ Loop as long as b (r1) is not zero.
+    CMP     r1, #0
+    BEQ     mod_done
 
-gcd_subtract_r0:
-    SUB r1, r1, r0         @ subtract r0 from r1
+    @ Calculate remainder: r0 = r0 % r1
+    @ Save the original 'a' before the division call.
+    MOV     r4, r0          @ r4 = a (the dividend)
 
-gcd_continue:
-    B gcd_loop             @ repeat loop
+    BL      __aeabi_idiv    @ Returns quotient in r0.
 
-gcd_done:
-    LDR lr, [sp]           @ restore link register
-    ADD sp, sp, #4
-    MOV pc, lr             @ return
+    @ Finish the modulo calculation: remainder = a - (quotient * b)
+    MUL     r0, r0, r1      @ r0 = quotient * b
+    SUB     r0, r4, r0      @ r0 = a - (quotient * b) -> this is the remainder
 
+    @ Setup for next loop iteration
+    MOV     r3, r0          @ r3 holds the new remainder
+    MOV     r0, r1          @ The new 'a' is the old 'b'
+    MOV     r1, r3          @ The new 'b' is the remainder
 
+    B       mod_loop
+
+mod_done:
+    @ The GCD is whatever is left in r0.
+    @ Restore saved registers and return.
+    POP     {r4, pc}
 
 
 
