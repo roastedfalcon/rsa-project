@@ -56,40 +56,35 @@ cprivexp:
 
 .global cpubexp
 # Function: cpubexp
-# Purpose:  Validates the public exponent
-# Input:    r0 = p, r1 = q, r2 = e
-# Output:   r0 = pub exponent or -1 (error)
-.text
+# Author: Mark Schlining
+# Description: Validates the public key exponent 'e'.
+#              Checks if 1 < e < phi_n AND gcd(e, phi_n) == 1.
+# Input: r0 = e, r1 = phi_n
+# Output: r0 = 1 if e is valid, 0 if e is invalid
 cpubexp:
-    PUSH {r4, r5, r6, lr}    @ save registers
-    MOV r4, r0               @ store p in r4
-    MOV r5, r1               @ store q in r5
-    MOV r6, r2               @ store e in r6
-    MOV r0, r2               @ move e to r0 for comparison
-    CMP r0, #1               @ check if e < 1
-    BLT pubError             @ if yes, jump to error
-    MOV r0, r4               @ move p to r0 for totient
-    MOV r1, r5               @ move q to r1 for totient
-    BL totient               @ call totient function
-    CMP r0, #-1              @ check if totient returned -1 (error)
-    BEQ pubError             @ if yes, jump to error
-    MOV r4, r0               @ store totient result in r4
-    CMP r6, r4               @ check if e > totient
-    BGT pubError             @ if yes, jump to error
-    MOV r0, r6               @ move e to r0 for gcd
-    MOV r1, r4               @ move totient to r1 for gcd
-    BL gcd                   @ call gcd function
-    CMP r0, #1               @ check if gcd is 1
-    BEQ pubValid             @ if yes, jump to valid
-    B pubError               @ Else, jump to error
-    pubError:
-        MOV r0, #-1          @ return -1 (error)
-        B end                @ jump to end
-    pubValid:
-        MOV r0, r6           @ return e (valid public exponent)
-        B end                @ jump to end
-    end:
-    POP {r4, r5, r6, pc}     @ restore registers and return
+    PUSH    {r4, lr}        @ Save registers
+
+    MOV     r4, r0          @ r4 = e
+
+    # Rule 1: Check if e > 1
+    CMP     r4, #1
+    MOVLE   r0, #0          @ If e <= 1, it's invalid. Set return to 0.
+    BLE     cpubexp_done    @ Exit if invalid.
+
+    # Rule 2: Check if e < phi_n
+    CMP     r4, r1          @ Compare e with phi_n
+    MOVGE   r0, #0          @ If e >= phi_n, it's invalid. Set return to 0.
+    BGE     cpubexp_done    @ Exit if invalid.
+
+    # Rule 3: Check if gcd(e, phi_n) == 1
+    # r0 (e) and r1 (phi_n) are already set correctly for the gcd call.
+    BL      gcd
+    CMP     r0, #1          @ Check if the gcd is 1
+    MOVEQ   r0, #1          @ If gcd is 1, e is valid. Set return to 1.
+    MOVNE   r0, #0          @ If gcd is not 1, e is invalid. Set return to 0.
+
+cpubexp_done:
+    POP     {r4, pc}        @ Restore registers and return
 .data
 # END cpubexp
 
@@ -177,107 +172,125 @@ processArray:
 # END processArray
 
 .global generateKeys
-
 # Function: generateKeys
-# Purpose:  Prompts user for primes and public exponent, generates private key
+# Author: Mark Schlining
+# Description: Handles the entire user flow for generating RSA keys.
 .text
 generateKeys:
-    PUSH {r4, r5, lr}        @ save registers
-    LDR r0, =introPrompt     @ load intro message
-    BL printf                @ print intro message
-    promptPrimesLoop:
-       LDR r0, =promptP      @ load prompt for p
-       BL printf             @ print prompt
-       LDR r0, =intFmt       @ load integer format
-       LDR r1, =pVal         @ load address for p
-       BL scanf              @ read p from user
-       LDR r0, =promptQ      @ load prompt for q
-       BL printf             @ print prompt
-       LDR r0, =intFmt       @ load integer format
-       LDR r1, =qVal         @ load address for q
-       BL scanf              @ read q from user
-       LDR r0, =pVal         @ load p value
-       LDR r0, [r0]          @ dereference p
-       LDR r1, =qVal         @ load q value
-       LDR r1, [r1]          @ dereference q
-       BL totient            @ call totient function
-       CMP r0, #-1           @ check if totient returned -1 (error)
-       BNE primesValidated   @ if valid, continue
-           LDR r0, =primeError  @ load error message
-           BL printf            @ print error
-           B promptPrimesLoop   @ repeat loop
-       primesValidated:
-       MOV r4, r0            @ store totient result in r4
-    promptPubKeyLoop:
-        LDR r0, =promptE     @ load prompt for e
-        BL printf            @ print prompt
-        LDR r0, =intFmt      @ load integer format
-        LDR r1, =pubKey      @ load address for e
-        BL scanf             @ read e from user
-        LDR r0, =pVal        @ load p value
-        LDR r0, [r0]         @ dereference p
-        LDR r1, =qVal        @ load q value
-        LDR r1, [r1]         @ dereference q
-        LDR r2, =pubKey      @ load e value
-        LDR r2, [r2]         @ dereference e
-        BL cpubexp           @ call cpubexp function
-        CMP r0, #-1          @ check if cpubexp returned -1 (error)
-        BNE pubKeyValidated  @ if valid, continue
-            LDR r0, =pubKeyError  @ load error message
-            MOV r1, r4            @ move totient to r1
-            MOV r2, r4            @ move totient to r2
-            BL printf             @ print error
-            B promptPubKeyLoop    @ repeat loop
-        pubKeyValidated:
-    LDR r0, =pubKey          @ load e value
-    LDR r0, [r0]             @ dereference e
-    MOV r1, r4               @ move totient to r1
-    BL cprivexp              @ call cprivexp function
-    MOV r5, r0               @ store private key in r5
-    LDR r0, =pVal            @ load p value
-    LDR r0, [r0]             @ dereference p
-    LDR r1, =qVal            @ load q value
-    LDR r1, [r1]             @ dereference q
-    MUL r1, r0, r1           @ calculate modulus (n = p * q)
-    LDR r0, =displayMod      @ load modulus display message
-    BL printf                @ print modulus
-    LDR r0, =displayPubKey   @ load public key display message
-    LDR r1, =pubKey          @ load e value
-    LDR r1, [r1]             @ dereference e
-    BL printf                @ print public key
-    LDR r0, =displayPrivKey  @ load private key display message
-    MOV r1, r5               @ move private key to r1
-    BL printf                @ print private key
-    POP {r4, r5, pc}         @ restore registers and return
+    PUSH    {lr}            @ Save link register for this function
+
+    # 1. Get p from user
+    LDR     r0, =p_prompt
+    BL      printf
+    LDR     r0, =scan_format_d
+    LDR     r1, =p_val
+    BL      scanf
+
+    # 2. Get q from user
+    LDR     r0, =q_prompt
+    BL      printf
+    LDR     r0, =scan_format_d
+    LDR     r1, =q_val
+    BL      scanf
+
+    # 3. Calculate totient (which also validates if p and q are prime)
+    LDR     r0, =p_val
+    LDR     r0, [r0]
+    LDR     r1, =q_val
+    LDR     r1, [r1]
+    BL      totient
+    CMP     r0, #-1         @ totient returns -1 on error
+    BEQ     prime_error
+
+    # Store phi_n if successful
+    LDR     r1, =phi_n_val
+    STR     r0, [r1]
+
+    # 4. Calculate n = p * q
+    LDR     r0, =p_val
+    LDR     r0, [r0]
+    LDR     r1, =q_val
+    LDR     r1, [r1]
+    MUL     r2, r0, r1
+    LDR     r3, =n_val
+    STR     r2, [r3]
+
+get_e_loop:
+    # 5. Get e from user
+    LDR     r0, =e_prompt
+    BL      printf
+    LDR     r0, =scan_format_d
+    LDR     r1, =e_val
+    BL      scanf
+
+    # 6. Validate e by calling cpubexp
+    LDR     r0, =e_val
+    LDR     r0, [r0]        @ r0 = e
+    LDR     r1, =phi_n_val
+    LDR     r1, [r1]        @ r1 = phi_n
+    BL      cpubexp
+    CMP     r0, #0          @ cpubexp returns 0 on error
+    BEQ     e_error         @ If invalid, print error and loop
+
+    # 7. Calculate d by calling cprivexp
+    LDR     r0, =e_val
+    LDR     r0, [r0]        @ r0 = e
+    LDR     r1, =phi_n_val
+    LDR     r1, [r1]        @ r1 = phi_n
+    BL      cprivexp
+    LDR     r1, =d_val
+    STR     r0, [r1]        @ Store d
+
+    # 8. Print the final keys
+    LDR     r0, =keys_header
+    BL      printf
+    LDR     r1, =n_val      @ Public Key (n, e)
+    LDR     r1, [r1]
+    LDR     r2, =e_val
+    LDR     r2, [r2]
+    LDR     r0, =pub_key_format
+    BL      printf
+    LDR     r1, =n_val      @ Private Key (n, d)
+    LDR     r1, [r1]
+    LDR     r2, =d_val
+    LDR     r2, [r2]
+    LDR     r0, =priv_key_format
+    BL      printf
+
+    B       generate_done   @ Skip error messages
+
+prime_error:
+    LDR     r0, =prime_error_msg
+    BL      printf
+    B       generate_done
+
+e_error:
+    LDR     r0, =e_error_msg
+    BL      printf
+    B       get_e_loop      @ Loop back to ask for e again
+
+generate_done:
+    POP     {pc}            @ Return from this function
+
 .data
-    introPrompt: .asciz "\n=====================================\n
-         RSA Key Generation           \n
-=====================================\n
- To generate RSA keys, provide:\n
- - Two prime numbers (P and Q), both prime.\n
- - A public key value (e) such that:\n
-    - 1 < e < Φ(n)\n
-    - e is co-prime to Φ(n) [ gcd(e, Φ(n)) = 1 ]\n\n"
+# Key Generation Data
+p_prompt:         .asciz  "Enter the first prime number (p): "
+q_prompt:         .asciz  "Enter the second prime number (q): "
+e_prompt:         .asciz  "Enter a public key exponent (e): "
+prime_error_msg:  .asciz  "Error: One or both numbers are not prime. Please try again.\n"
+e_error_msg:      .asciz  "Error: Invalid public exponent 'e'. It must be 1 < e < phi(n) and coprime to phi(n).\n"
+keys_header:      .asciz  "\n--- Keys Generated Successfully ---\n"
+pub_key_format:   .asciz  "Public Key (n, e):  (%d, %d)\n"
+priv_key_format:  .asciz  "Private Key (n, d): (%d, %d)\n"
 
-    intFmt: .asciz "%d"
-    pVal: .word 0
-    qVal: .word 0
-
-    promptP: .asciz "Enter the first prime number (P): "
-    promptQ: .asciz "Enter the second prime number (Q): "
-    primeError: .asciz "\n[Error] One or both of the given integers are not prime.\n"
-
-    pubKey: .word 0
-    promptE: .asciz "Enter the desired public exponent (e): "
-    
-    pubKeyError: .asciz "\n[Error] Invalid public key.\n
-     Conditions:\n
-     - e must be between 1 and %d\n
-     - e must be coprime to Φ(n) (gcd(e, Φ(n)) = 1)\n"
-
-    displayMod:      .asciz "\n[Key Pair Generated]\nModulus (n): %d\n"
-    displayPubKey:   .asciz "Public Key (e): %d\n"
-    displayPrivKey:  .asciz "Private Key (d): %d\n"
+# Formats and Storage
+scan_format_d:    .asciz  "%d"
+p_val:            .word   0
+q_val:            .word   0
+e_val:            .word   0
+n_val:            .word   0
+phi_n_val:        .word   0
+d_val:            .word   0
 
 # END generateKeys
 
@@ -289,12 +302,12 @@ encrypt:
      PUSH {r4, r5, lr}       @ save registers
      LDR r0, =promptPubKey   @ load prompt for public key
      BL printf               @ print prompt
-     LDR r0, =intFmt         @ load integer format
+     LDR r0, =scan_format_d  @ load integer format
      LDR r1, =publicKey      @ load address for public key
      BL scanf                @ read public key from user
      LDR r0, =promptModulus  @ load prompt for modulus
      BL printf               @ print prompt
-     LDR r0, =intFmt         @ load integer format
+     LDR r0, =scan_format_d  @ load integer format
      LDR r1, =modulus        @ load address for modulus
      BL scanf                @ read modulus from user
      clearStdin:
@@ -355,12 +368,12 @@ decrypt:
      PUSH {r4, r5, lr}       @ save registers
      LDR r0, =promptPrivKey  @ load prompt for private key
      BL printf               @ print prompt
-     LDR r0, =intFmt         @ load integer format
+     LDR r0, =scan_format_d  @ load integer format
      LDR r1, =privateKey     @ load address for private key
      BL scanf                @ read private key from user
      LDR r0, =promptModulus  @ load prompt for modulus
      BL printf               @ print prompt
-     LDR r0, =intFmt         @ load integer format
+     LDR r0, =scan_format_d  @ load integer format
      LDR r1, =modulus        @ load address for modulus
      BL scanf                @ read modulus from user
      LDR r0, =fileName       @ load input file name
