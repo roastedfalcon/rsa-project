@@ -6,6 +6,7 @@
 .global str_to_array
 .text
 # Function: str_to_array
+# Author: Kassem Arif
 # Converts a string into an array of 32-bit integers.
 # Input:    
 #   r0 - Pointer to the string
@@ -54,6 +55,7 @@ str_to_array_done:
 .global array_to_str
 .text
 # Function: array_to_str
+# Author: Kassem Arif
 # Converts an integer array into a string with a null terminator.
 # Input:    
 #   r0 - Pointer to the integer array
@@ -104,6 +106,7 @@ array_to_str_done:
 .global write_file
 .text
 # Function: write_file
+# Author: Kassem Arif
 # Saves a string to a file.
 # Input:    
 #   r0 - File name
@@ -144,6 +147,7 @@ error_write_msg: .asciz "\nERROR: COULDN'T WRITE TO FILE\n"
 .global write_array
 .text
 # Function: write_array
+# Author: Kassem Arif
 # Saves an integer array to a file.
 # Input:    
 #   r0 - File name
@@ -193,6 +197,7 @@ write_format: .asciz "%d "
 .global read_array
 .text
 # Function: read_array
+# Author: Kassem Arif
 # Reads integers from a file into an array.
 # Input:    
 #   r0 - File name

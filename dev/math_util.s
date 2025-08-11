@@ -46,6 +46,7 @@ mod_done:
 
 .global mod
 # Function: mod
+# Author: Kassem Arif
 # Description: Calculates the remainder when r0 is divided by r1
 # Input: r0 = dividend, r1 = divisor
 # Output: r0 = remainder (modulo result)
